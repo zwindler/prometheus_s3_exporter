@@ -25,7 +25,7 @@ RUN GOOS=linux GOARCH=amd64 \
 # Stage 2 (to create a downsized "container executable", ~5MB)                #
 ###############################################################################
 
-FROM scratch
+FROM alpine
 WORKDIR /app/
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=builder /go/src/github.com/zwindler/prometheus_s3_exporter/bin/prometheus_s3_exporter /app/prometheus_s3_exporter
