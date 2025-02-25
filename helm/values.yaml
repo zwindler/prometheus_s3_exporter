@@ -34,7 +34,7 @@ nodeSelector: {}
 
 tolerations: []
 
-affinity: []
+affinity: {}
 
 # Configuration for the exporter
 exporter:
