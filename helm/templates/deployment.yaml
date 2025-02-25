@@ -14,8 +14,13 @@ spec:
       labels:
         app: {{ include "prometheus-s3-exporter.fullname" . }}
     spec:
+      serviceAccountName: {{ include "prometheus-s3-exporter.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
-        - name: prometheus-s3-exporter
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
@@ -57,6 +62,7 @@ spec:
             {{- if .Values.exporter.useCredentialMapping }}
             - name: credentials-mapping
               mountPath: /app/credentials_mapping.txt
+              subPath: credentials_mapping.txt
             {{- end }}
             {{- if .Values.extraVolumeMounts }}
             {{- toYaml .Values.extraVolumeMounts | nindent 12 }}

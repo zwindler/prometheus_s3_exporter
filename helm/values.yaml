@@ -5,6 +5,25 @@ image:
   tag: release
   pullPolicy: IfNotPresent
 
+serviceAccount:
+  create: true
+
+podAnnotations: {}
+
+podSecurityContext:
+  fsGroup: 2000
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+    - ALL
+  # readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 1000
+  seccompProfile: 
+   type: "RuntimeDefault"
+
 service:
   type: ClusterIP
   port: 9340
