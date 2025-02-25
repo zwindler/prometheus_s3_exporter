@@ -30,4 +30,4 @@ WORKDIR /app/
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=builder /go/src/github.com/zwindler/prometheus_s3_exporter/bin/prometheus_s3_exporter /app/
 EXPOSE 9340
-CMD ["/app/prometheus_s3_exporter"]
+ENTRYPOINT ["/app/prometheus_s3_exporter"]
