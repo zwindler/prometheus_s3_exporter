@@ -1,8 +1,10 @@
 package cmd
 
 import (
+	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -11,7 +13,6 @@ import (
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
-	"github.com/aws/aws-sdk-go/service/s3/s3iface"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/spf13/cobra"
@@ -22,16 +23,17 @@ const (
 )
 
 var (
-	listenAddr     string
-	metricsPath    string
-	buckets        string
-	prefix         string
-	delimiter      string
-	endpointURL    string
-	region         string
-	sse            string
-	disableSSL     bool
-	forcePathStyle bool
+	listenAddr         string
+	metricsPath        string
+	buckets            string
+	credentialsMapping string
+	prefix             string
+	delimiter          string
+	endpointURL        string
+	region             string
+	sse                string
+	disableSSL         bool
+	forcePathStyle     bool
 
 	s3ListSuccess = prometheus.NewDesc(
 		prometheus.BuildFQName(namespace, "", "list_success"),
@@ -75,15 +77,22 @@ var (
 	)
 )
 
-// Exporter is our exporter type
 type Exporter struct {
-	buckets   []string
-	prefix    string
-	delimiter string
-	svc       s3iface.S3API
+	buckets        []string
+	prefix         string
+	delimiter      string
+	credentialsMap map[string]Credentials
+	endpointURL    string
+	region         string
+	disableSSL     bool
+	forcePathStyle bool
 }
 
-// Describe all the metrics we export
+type Credentials struct {
+	AccessKey     string
+	SecretKeyFile string
+}
+
 func (e *Exporter) Describe(ch chan<- *prometheus.Desc) {
 	ch <- s3ListSuccess
 	ch <- s3ListDuration
@@ -121,6 +130,40 @@ func (e *Exporter) collectMetricsForBucket(bucket string, ch chan<- prometheus.M
 	var lastObjectSize int64
 	var commonPrefixes int
 
+	var creds *credentials.Credentials
+	if e.credentialsMap != nil {
+		credsInfo, ok := e.credentialsMap[bucket]
+		if !ok {
+			log.Fatalf("no credentials found for bucket: %s", bucket)
+		}
+
+		secretKey, err := os.ReadFile(credsInfo.SecretKeyFile)
+		if err != nil {
+			log.Fatalf("error reading secret key file for bucket %s: %v", bucket, err)
+		}
+
+		creds = credentials.NewStaticCredentials(credsInfo.AccessKey, strings.TrimSpace(string(secretKey)), "")
+	} else {
+		creds = credentials.NewChainCredentials(
+			[]credentials.Provider{
+				&credentials.EnvProvider{},
+				&credentials.SharedCredentialsProvider{},
+			})
+	}
+
+	sess, err := session.NewSession(&aws.Config{
+		Credentials:      creds,
+		Endpoint:         aws.String(e.endpointURL),
+		Region:           aws.String(e.region),
+		DisableSSL:       aws.Bool(e.disableSSL),
+		S3ForcePathStyle: aws.Bool(e.forcePathStyle),
+	})
+	if err != nil {
+		log.Fatalf("error creating session: %v", err)
+	}
+
+	svc := s3.New(sess)
+
 	query := &s3.ListObjectsV2Input{
 		Bucket:    aws.String(bucket),
 		Prefix:    aws.String(e.prefix),
@@ -130,7 +173,7 @@ func (e *Exporter) collectMetricsForBucket(bucket string, ch chan<- prometheus.M
 	// Continue making requests until we've listed and compared the date of every object
 	startList := time.Now()
 	for {
-		resp, err := e.svc.ListObjectsV2(query)
+		resp, err := svc.ListObjectsV2(query)
 		if err != nil {
 			log.Fatalf("error when listing objects: %v", err)
 			ch <- prometheus.MustNewConstMetric(
@@ -187,40 +230,37 @@ func (e *Exporter) collectMetricsForBucket(bucket string, ch chan<- prometheus.M
 }
 
 var rootCmd = &cobra.Command{
-	Use:   "s3_exporter",
+	Use:   "prometheus_s3_exporter",
 	Short: "Export metrics for S3 buckets",
-	Long:  `A Prometheus exporter for AWS S3 bucket metrics.`,
+	Long:  `Yet another Prometheus exporter for AWS S3 bucket metrics.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		var sess *session.Session
+		var bucketList []string
+		var credentialsMap map[string]Credentials
 		var err error
 
-		// Load AWS credentials
-		creds := credentials.NewChainCredentials(
-			[]credentials.Provider{
-				&credentials.EnvProvider{},
-				&credentials.SharedCredentialsProvider{},
-			})
-
-		sess, err = session.NewSession(&aws.Config{
-			Credentials:      creds,
-			Endpoint:         aws.String(endpointURL),
-			Region:           aws.String(region),
-			DisableSSL:       aws.Bool(disableSSL),
-			S3ForcePathStyle: aws.Bool(forcePathStyle),
-		})
-		if err != nil {
-			log.Fatalf("error creating session: %v", err)
+		if credentialsMapping != "" {
+			credentialsMap, err = loadCredentialsMapping(credentialsMapping)
+			if err != nil {
+				log.Fatalf("error loading credentials mapping: %v", err)
+			}
+			for bucket := range credentialsMap {
+				bucketList = append(bucketList, bucket)
+			}
+		} else if buckets != "" {
+			bucketList = splitBuckets(buckets)
+		} else {
+			log.Fatalf("either --s3.buckets or --s3.credentials-mapping must be specified")
 		}
 
-		svc := s3.New(sess)
-
-		bucketList := splitBuckets(buckets)
-
 		exporter := &Exporter{
-			buckets:   bucketList,
-			prefix:    prefix,
-			delimiter: delimiter,
-			svc:       svc,
+			buckets:        bucketList,
+			prefix:         prefix,
+			delimiter:      delimiter,
+			credentialsMap: credentialsMap,
+			endpointURL:    endpointURL,
+			region:         region,
+			disableSSL:     disableSSL,
+			forcePathStyle: forcePathStyle,
 		}
 
 		registry := prometheus.NewRegistry()
@@ -242,12 +282,41 @@ var rootCmd = &cobra.Command{
 	},
 }
 
+func loadCredentialsMapping(filePath string) (map[string]Credentials, error) {
+	credentialsMap := make(map[string]Credentials)
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, err
+	}
+
+	lines := strings.Split(string(data), "\n")
+	for _, line := range lines {
+		if line == "" {
+			continue
+		}
+		parts := strings.Split(line, ",")
+		if len(parts) != 3 {
+			return nil, fmt.Errorf("invalid credentials mapping format")
+		}
+		bucket := parts[0]
+		accessKey := parts[1]
+		secretKeyFile := parts[2]
+		credentialsMap[bucket] = Credentials{
+			AccessKey:     accessKey,
+			SecretKeyFile: secretKeyFile,
+		}
+	}
+
+	return credentialsMap, nil
+}
+
 func init() {
 	cobra.OnInitialize(initConfig)
 
 	rootCmd.PersistentFlags().StringVar(&listenAddr, "web.listen-address", ":9340", "Address to listen on for web interface and telemetry.")
 	rootCmd.PersistentFlags().StringVar(&metricsPath, "web.metrics-path", "/metrics", "Path under which to expose metrics")
 	rootCmd.PersistentFlags().StringVar(&buckets, "s3.buckets", "", "Comma-separated list of S3 buckets to monitor")
+	rootCmd.PersistentFlags().StringVar(&credentialsMapping, "s3.credentials-mapping", "", "Path to the credentials mapping file")
 	rootCmd.PersistentFlags().StringVar(&prefix, "s3.prefix", "", "Prefix to filter objects")
 	rootCmd.PersistentFlags().StringVar(&delimiter, "s3.delimiter", "", "Delimiter to group objects")
 	rootCmd.PersistentFlags().StringVar(&endpointURL, "s3.endpoint-url", "", "Custom endpoint URL")
@@ -256,7 +325,6 @@ func init() {
 	rootCmd.PersistentFlags().BoolVar(&disableSSL, "s3.disable-ssl", false, "Custom disable SSL")
 	rootCmd.PersistentFlags().BoolVar(&forcePathStyle, "s3.force-path-style", false, "Custom force path style")
 
-	rootCmd.MarkPersistentFlagRequired("s3.buckets")
 	rootCmd.MarkPersistentFlagRequired("s3.region")
 }
 
