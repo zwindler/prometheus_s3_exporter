@@ -1,0 +1,11 @@
+{{- if .Values.exporter.useCredentialMapping }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "prometheus-s3-exporter.fullname" . }}
+  labels:
+    app: {{ include "prometheus-s3-exporter.fullname" . }}
+data:
+  credentials_mapping.txt: |-
+    {{ .Values.credentialsMapping | nindent 4 }}
+{{- end }}

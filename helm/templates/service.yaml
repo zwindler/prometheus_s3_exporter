@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "prometheus-s3-exporter.fullname" . }}
+  labels:
+    app: {{ include "prometheus-s3-exporter.fullname" . }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - port: {{ .Values.service.port }}
+      targetPort: 9340
+      protocol: TCP
+      name: http
+  selector:
+    app: {{ include "prometheus-s3-exporter.fullname" . }}

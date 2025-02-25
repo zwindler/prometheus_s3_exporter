@@ -1,0 +1,75 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "prometheus-s3-exporter.fullname" . }}
+  labels:
+    app: {{ include "prometheus-s3-exporter.fullname" . }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ include "prometheus-s3-exporter.fullname" . }}
+  template:
+    metadata:
+      labels:
+        app: {{ include "prometheus-s3-exporter.fullname" . }}
+    spec:
+      containers:
+        - name: prometheus-s3-exporter
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: 9340
+          {{- if (not .Values.exporter.useCredentialMapping) }}
+          env:
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "prometheus-s3-exporter.fullname" . }}
+                  key: accessKeyID
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "prometheus-s3-exporter.fullname" . }}
+                  key: secretAccessKey
+          {{- end }}
+          args:
+            - "--s3.endpoint-url={{ .Values.exporter.endpointURL }}"
+            - "--s3.region={{ .Values.exporter.region }}"
+            {{- if .Values.exporter.useCredentialMapping }}
+            - "--s3.credentials-mapping=/app/credentials_mapping.txt"
+            {{- else}}
+            - "--s3.buckets={{ .Values.exporter.buckets }}"
+            {{- end }}
+            {{- if .Values.exporter.prefix }}
+            - "--s3.prefix={{ .Values.exporter.prefix }}"
+            {{- end }}
+            {{- if .Values.exporter.delimiter }}
+            - "--s3.delimiter={{ .Values.exporter.delimiter }}"
+            {{- end }}
+            {{- if .Values.exporter.disableSSL }}
+            - "--s3.disable-ssl={{ .Values.exporter.disableSSL }}"
+            {{- end }}
+            {{- if .Values.exporter.forcePathStyle }}
+            - "--s3.force-path-style={{ .Values.exporter.forcePathStyle }}"
+            {{- end }}
+          volumeMounts:
+            {{- if .Values.exporter.useCredentialMapping }}
+            - name: credentials-mapping
+              mountPath: /app/credentials_mapping.txt
+            {{- end }}
+            {{- if .Values.extraVolumeMounts }}
+            {{- toYaml .Values.extraVolumeMounts | nindent 12 }}
+            {{- end }}
+      volumes:
+        {{- if .Values.exporter.useCredentialMapping }}
+        - name: credentials-mapping
+          configMap:
+            name: {{ include "prometheus-s3-exporter.fullname" . }}
+        {{- end }}
+        {{- if .Values.extraVolumes }}
+        {{- toYaml .Values.extraVolumes | nindent 8 }}
+        {{- end }}
+      nodeSelector: {{ .Values.nodeSelector }}
+      tolerations: {{ .Values.tolerations }}
+      affinity: {{ .Values.affinity }}

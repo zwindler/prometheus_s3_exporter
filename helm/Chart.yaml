@@ -1,0 +1,6 @@
+apiVersion: v2
+name: prometheus-s3-exporter
+description: A Helm chart for deploying Prometheus S3 Exporter
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

@@ -1,0 +1,44 @@
+replicaCount: 1
+
+image:
+  repository: ghcr.io/zwindler/prometheus_s3_exporter
+  tag: release
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 9340
+
+resources: {}
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: []
+
+# Configuration for the exporter
+exporter:
+  # if useCredentialMapping is true, you have to configure credentialsMapping value
+  useCredentialMapping: false
+  # if useCredentialMapping is false, you have to configure buckets value
+  buckets: "somebucket,someotherbucket"
+  endpointURL: "s3.eu-west-par.io.cloud.ovh.net"
+  region: "eu-west-par"
+  prefix: ""
+  delimiter: ""
+  disableSSL: false
+  forcePathStyle: false
+
+# Extra volumes and volume mounts
+# use to mount secrets for credential mapping if you have multiple access keys / secret keys
+extraVolumes: []
+extraVolumeMounts: []
+
+# ConfigMap for credentials mapping file (if useCredentialMapping is true)
+credentialsMapping: ""
+#credentialsMapping: |
+  # Example:
+  # bucket1,access_key_1_value,/path/to/secret_key_1
+  # bucket2,access_key_2_value,/path/to/secret_key_2
+  # bucket3,access_key_2_value,/path/to/secret_key_2
