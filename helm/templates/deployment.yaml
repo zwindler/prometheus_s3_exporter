@@ -38,6 +38,7 @@ spec:
                   name: {{ include "prometheus-s3-exporter.fullname" . }}
                   key: secretAccessKey
           {{- end }}
+          command: ["/app/prometheus_s3_exporter"]
           args:
             - "--s3.endpoint-url={{ .Values.exporter.endpointURL }}"
             - "--s3.region={{ .Values.exporter.region }}"
@@ -67,6 +68,18 @@ spec:
             {{- if .Values.extraVolumeMounts }}
             {{- toYaml .Values.extraVolumeMounts | nindent 12 }}
             {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       volumes:
         {{- if .Values.exporter.useCredentialMapping }}
         - name: credentials-mapping
@@ -76,6 +89,3 @@ spec:
         {{- if .Values.extraVolumes }}
         {{- toYaml .Values.extraVolumes | nindent 8 }}
         {{- end }}
-      nodeSelector: {{ .Values.nodeSelector }}
-      tolerations: {{ .Values.tolerations }}
-      affinity: {{ .Values.affinity }}
