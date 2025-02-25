@@ -1,0 +1,15 @@
+{{- if and .Values.prometheus.enabled .Values.prometheus.usePodMonitor }}
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: {{ include "prometheus-s3-exporter.fullname" . }}
+  labels:
+    app: {{ include "prometheus-s3-exporter.fullname" . }}
+spec:
+  selector:
+    matchLabels:
+      app: {{ include "prometheus-s3-exporter.fullname" . }}
+  podMetricsEndpoints:
+    - port: http
+      path: /metrics
+{{- end }}

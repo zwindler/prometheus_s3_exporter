@@ -49,6 +49,16 @@ exporter:
   disableSSL: false
   forcePathStyle: false
 
+# Prometheus scraping configuration
+prometheus:
+  enabled: true
+  usePodMonitor: false
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/path: "/metrics"
+    prometheus.io/port: "9340"
+    prometheus.io/scheme: "http"
+
 # Extra volumes and volume mounts
 # use to mount secrets for credential mapping if you have multiple access keys / secret keys
 extraVolumes: []

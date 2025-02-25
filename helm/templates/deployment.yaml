@@ -13,6 +13,12 @@ spec:
     metadata:
       labels:
         app: {{ include "prometheus-s3-exporter.fullname" . }}
+      {{- if and .Values.prometheus.enabled (not .Values.prometheus.usePodMonitor) }}
+      annotations:
+        {{- range $key, $value := .Values.prometheus.annotations }}
+        {{ $key }}: {{ $value | quote }}
+        {{- end }}
+      {{- end }}
     spec:
       serviceAccountName: {{ include "prometheus-s3-exporter.serviceAccountName" . }}
       securityContext:
@@ -25,6 +31,7 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
             - containerPort: 9340
+              name: http
           {{- if (not .Values.exporter.useCredentialMapping) }}
           env:
             - name: AWS_ACCESS_KEY_ID
